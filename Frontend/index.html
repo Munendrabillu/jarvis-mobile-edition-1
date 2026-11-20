@@ -3,238 +3,109 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#030712">
-  <title>J.A.R.V.I.S | HUD</title>
+  <meta name="theme-color" content="#020b14">
+  <meta name="description" content="JARVIS AI Voice Assistant">
+  <title>J.A.R.V.I.S.</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <div class="hud-bg"></div>
-  <div class="scanline"></div>
+  <div class="scanlines"></div>
 
-  <div class="app">
+  <header class="top">
+    <div>
+      <div class="logo">J.A.R.V.I.S.</div>
+      <div class="sub">PERSONAL AI INTERFACE</div>
+    </div>
+    <button id="fullscreen" class="small-btn">⛶</button>
+  </header>
 
-    <!-- TOP NAV -->
-    <header class="header">
-      <div class="brand">
-        <div class="logo">J</div>
-        <div>
-          <h1>J.A.R.V.I.S</h1>
-          <p>JUST A RATHER VERY INTELLIGENT SYSTEM</p>
+  <section class="status-grid">
+    <div class="status-box">
+      <span class="dot"></span>
+      <span id="connection">SYSTEM READY</span>
+    </div>
+    <div class="status-box">
+      <span id="voice-status">VOICE OFF</span>
+    </div>
+    <div class="status-box">
+      <span id="clock">00:00:00</span>
+    </div>
+  </section>
+
+  <main>
+    <section class="reactor-area">
+      <div class="outer-ring"></div>
+      <div class="outer-ring ring2"></div>
+      <div class="outer-ring ring3"></div>
+      <div id="reactor" class="reactor">
+        <div class="inner-ring">
+          <div class="core">
+            <span id="core-text">J</span>
+          </div>
         </div>
       </div>
+      <div id="reactor-label">AWAITING COMMAND</div>
+    </section>
 
-      <div class="top-right">
-        <div class="clock">
-          <div id="clock">00:00:00</div>
-          <small id="date">INITIALIZING</small>
-        </div>
-        <button id="clear-btn" class="clear-btn">RESET</button>
+    <section class="info-grid">
+      <div class="info-card">
+        <div class="info-title">BATTERY</div>
+        <div id="battery">--%</div>
+        <div id="battery-status">DEVICE</div>
       </div>
-    </header>
+      <div class="info-card">
+        <div class="info-title">WEATHER</div>
+        <div id="weather">READY</div>
+        <div id="weather-status">WEATHER SEARCH</div>
+      </div>
+      <div class="info-card">
+        <div class="info-title">FLASHLIGHT</div>
+        <div id="flash-status">OFF</div>
+        <button id="flash-btn" class="mini-btn">TOGGLE</button>
+      </div>
+    </section>
 
-    <!-- MAIN DASHBOARD -->
-    <main class="dashboard">
+    <section class="quick-grid">
+      <button id="weather-btn">☁ WEATHER</button>
+      <button id="google-btn">⌕ GOOGLE</button>
+      <button id="youtube-btn">▶ YOUTUBE</button>
+      <button id="maps-btn">⌖ MAPS</button>
+    </section>
 
-      <!-- LEFT PANEL -->
-      <aside class="left-panel">
-        <div class="panel-title">SYSTEM DIAGNOSTICS</div>
-
-        <div class="data-card">
-          <span class="label">AI ENGINE</span>
-          <span class="value cyan">GEMINI AI</span>
+    <section class="chat-panel">
+      <div class="panel-title">COMMUNICATION LOG</div>
+      <div id="chat" class="chat">
+        <div class="message bot">
+          <span class="tag">JARVIS</span>
+          <div>Hello! Systems online. How may I assist you?</div>
         </div>
+      </div>
+    </section>
 
-        <div class="data-card">
-          <span class="label">NETWORK</span>
-          <span class="value" id="connection">READY</span>
-        </div>
+    <section class="control-grid">
+      <button id="cam-btn">📷 CAMERA</button>
+      <button id="mic-btn">🎙 MIC</button>
+      <button id="speak-btn">🔊 SPEAK</button>
+      <button id="wake-btn">◉ WAKE</button>
+      <button id="clear-btn">⌫ CLEAR</button>
+      <button id="fullscreen-bottom">⛶ FULLSCREEN</button>
+    </section>
 
-        <div class="data-card">
-          <span class="label">VOICE SYSTEM</span>
-          <span class="value" id="voice-status">READY</span>
-        </div>
+    <div class="image-preview" id="image-preview">
+      <img id="preview-img" alt="Selected image">
+      <button id="remove-image">✕ REMOVE</button>
+    </div>
 
-        <div class="data-card">
-          <span class="label">MEMORY</span>
-          <span class="value cyan">LOCAL STORAGE</span>
-        </div>
+    <section class="input-area">
+      <input id="msg" type="text" placeholder="Enter command..." autocomplete="off">
+      <button id="send">SEND</button>
+    </section>
 
-        <div class="data-card">
-          <span class="label">SECURITY</span>
-          <span class="value green">ACTIVE</span>
-        </div>
+    <input id="img-input" type="file" accept="image/*" capture="environment" hidden>
+  </main>
 
-        <div class="mini-visual">
-          <div class="visual-title">ENERGY CORE</div>
-          <div class="bars">
-            <i></i><i></i><i></i><i></i><i></i>
-            <i></i><i></i><i></i><i></i><i></i>
-            <i></i><i></i><i></i><i></i><i></i>
-          </div>
-          <div class="visual-caption">SYSTEM NOMINAL</div>
-        </div>
-
-        <div class="panel-footer">ALL SYSTEMS OPERATIONAL</div>
-      </aside>
-
-      <!-- CENTER PANEL -->
-      <section class="center-panel">
-
-        <div class="reactor-area">
-          <div class="reactor">
-
-            <div class="outer-ring"></div>
-            <div class="ring ring1"></div>
-            <div class="ring ring2"></div>
-            <div class="ring ring3"></div>
-            <div class="ring ring4"></div>
-            <div class="ring ring5"></div>
-
-            <div class="reactor-core">
-              <span>J</span>
-            </div>
-
-            <div class="orbit-dot dot1"></div>
-            <div class="orbit-dot dot2"></div>
-            <div class="orbit-dot dot3"></div>
-          </div>
-        </div>
-
-        <div class="core-heading">
-          <h2>J.A.R.V.I.S</h2>
-          <div id="core-text">SYSTEM ONLINE</div>
-        </div>
-
-        <div class="center-decoration">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-
-        <div class="chat-panel">
-          <div class="chat-header">
-            <span>COMMUNICATION TERMINAL</span>
-            <span class="live"><i></i> LIVE</span>
-          </div>
-
-          <div id="chat">
-            <div class="msg ai">
-              <strong>J.A.R.V.I.S</strong>
-              <p>Hello! All systems are online. How may I assist you?</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- INPUT -->
-        <div class="input-area">
-          <div class="tools">
-            <button id="cam-btn" title="Camera / Image">📷</button>
-            <button id="mic-btn" title="Voice input">🎤</button>
-
-            <input
-              type="file"
-              id="img-input"
-              accept="image/*"
-              capture="environment"
-              hidden
-            >
-          </div>
-
-          <input
-            id="msg"
-            type="text"
-            placeholder="Enter command..."
-            autocomplete="off"
-          >
-
-          <button id="send" class="send-btn">➤</button>
-        </div>
-
-      </section>
-
-      <!-- RIGHT PANEL -->
-      <aside class="right-panel">
-        <div class="panel-title">HUD MONITOR</div>
-
-        <div class="radar">
-          <div class="radar-circle r-a"></div>
-          <div class="radar-circle r-b"></div>
-          <div class="radar-circle r-c"></div>
-          <div class="radar-cross x"></div>
-          <div class="radar-cross y"></div>
-          <div class="radar-sweep"></div>
-          <div class="radar-center"></div>
-          <div class="radar-point p1"></div>
-          <div class="radar-point p2"></div>
-          <div class="radar-point p3"></div>
-        </div>
-
-        <div class="radar-label">SCANNING ENVIRONMENT</div>
-
-        <div class="data-card">
-          <span class="label">UPLINK</span>
-          <span class="value green">CONNECTED</span>
-        </div>
-
-        <div class="data-card">
-          <span class="label">PROTOCOL</span>
-          <span class="value cyan">HTTPS</span>
-        </div>
-
-        <div class="data-card">
-          <span class="label">INTERFACE</span>
-          <span class="value cyan">HUD v2.0</span>
-        </div>
-
-        <div class="right-visual">
-          <div class="visual-title">SIGNAL ACTIVITY</div>
-          <div class="signal">
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-          </div>
-        </div>
-
-        <div class="panel-footer">HUD MONITOR ACTIVE</div>
-      </aside>
-
-    </main>
-
-    <!-- FOOTER -->
-    <footer class="footer">
-      <span>STARK TECHNOLOGY INTERFACE</span>
-      <span class="footer-center">J.A.R.V.I.S AI</span>
-      <span>VERSION 2.0</span>
-    </footer>
-
-  </div>
-
+  <footer>J.A.R.V.I.S. SYSTEMS • AI ONLINE</footer>
   <script src="script.js"></script>
-
-  <!-- DIGITAL CLOCK -->
-  <script>
-    function updateClock() {
-      const now = new Date();
-
-      const clock = document.getElementById("clock");
-      const date = document.getElementById("date");
-
-      clock.textContent = now.toLocaleTimeString("en-GB");
-
-      date.textContent = now.toLocaleDateString("en-GB", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-      }).toUpperCase();
-    }
-
-    updateClock();
-    setInterval(updateClock, 1000);
-  </script>
 </body>
 </html>

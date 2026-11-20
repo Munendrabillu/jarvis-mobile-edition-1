@@ -1,383 +1,364 @@
-// ===========================================
-// J.A.R.V.I.S AI ASSISTANT
-// Gemini AI | Voice | Image | Local Memory
-// ===========================================
+/* ==========================================
+   J.A.R.V.I.S. AI - COMPLETE SCRIPT
+========================================== */
 
-const API_KEY_STORAGE = "jarvis_key";
-const MEMORY_STORAGE = "jarvis_memory";
+const $ = id => document.getElementById(id);
 
-// Newer model names first; fallback attempts follow.
-const MODELS = [
-  "gemini-3.5-flash-lite",
-  "gemini-3.8-flash",
-  "gemini-3.1-flash-lite"
-];
-
-let API_KEY = localStorage.getItem(API_KEY_STORAGE);
+let API_KEY = localStorage.getItem("jarvis_key");
 
 if (!API_KEY) {
   API_KEY = prompt("Enter your Gemini API Key:");
-  if (API_KEY) {
-    API_KEY = API_KEY.trim();
-    localStorage.setItem(API_KEY_STORAGE, API_KEY);
-  }
+  if (API_KEY) localStorage.setItem("jarvis_key", API_KEY.trim());
 }
 
-let MEMORY = JSON.parse(
-  localStorage.getItem(MEMORY_STORAGE) || "[]"
-);
+API_KEY = API_KEY ? API_KEY.trim() : "";
 
-const chat = document.getElementById("chat");
-const msg = document.getElementById("msg");
-const send = document.getElementById("send");
-const micBtn = document.getElementById("mic-btn");
-const camBtn = document.getElementById("cam-btn");
-const imgInput = document.getElementById("img-input");
-const clearBtn = document.getElementById("clear-btn");
-const connection = document.getElementById("connection");
-const voiceStatus = document.getElementById("voice-status");
-const coreText = document.getElementById("core-text");
+const MODEL = "gemini-2.5-flash";
+const API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/" +
+  MODEL + ":generateContent";
 
-// ===========================================
-// CHAT DISPLAY
-// ===========================================
+let history = [];
+let selectedImage = null;
+let wakeEnabled = false;
+let wakeRecognition = null;
+let wakeRestart = false;
+let currentRecognition = null;
+let flashlightStream = null;
+let torchOn = false;
+let speakEnabled = true;
 
-function add(text, type = "ai") {
-  const div = document.createElement("div");
-  div.className = "msg " + type;
-
-  const title = document.createElement("strong");
-  title.textContent = type === "user" ? "YOU" : "J.A.R.V.I.S";
-
-  const paragraph = document.createElement("p");
-  paragraph.textContent = text;
-
-  div.appendChild(title);
-  div.appendChild(paragraph);
-
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-
-  return div;
+try {
+  history = JSON.parse(localStorage.getItem("jarvis_memory") || "[]");
+} catch {
+  history = [];
 }
 
-function setStatus(text, state = "on") {
-  connection.textContent = text;
-  connection.className = state;
+/* ===== CHAT ===== */
+
+function addMessage(text, type) {
+  const box = document.createElement("div");
+  box.className = "message " + type;
+
+  const tag = document.createElement("span");
+  tag.className = "tag";
+  tag.textContent = type === "bot" ? "JARVIS" : "YOU";
+
+  const body = document.createElement("div");
+  body.textContent = text;
+
+  box.appendChild(tag);
+  box.appendChild(body);
+
+  $("chat").appendChild(box);
+  $("chat").scrollTop = $("chat").scrollHeight;
 }
 
-function setCore(text) {
-  coreText.textContent = text;
-}
-
-function saveMemory() {
-  localStorage.setItem(
-    MEMORY_STORAGE,
-    JSON.stringify(MEMORY)
-  );
+function saveHistory() {
+  try {
+    localStorage.setItem("jarvis_memory", JSON.stringify(history.slice(-20)));
+  } catch {}
 }
 
 function restoreChat() {
-  chat.innerHTML = "";
+  if (!history.length) return;
 
-  if (MEMORY.length === 0) {
-    add("Hello! I am online. How may I assist you today?", "ai");
+  $("chat").innerHTML = "";
+
+  history.forEach(item => {
+    if (item.role === "user") {
+      addMessage(item.parts?.[0]?.text || "Image sent", "user");
+    } else {
+      addMessage(item.parts?.[0]?.text || "Response", "bot");
+    }
+  });
+}
+
+function setStatus(text) {
+  $("connection").textContent = text;
+}
+
+function setMode(mode, label) {
+  document.body.classList.toggle("listening", mode === "listening");
+  document.body.classList.toggle("processing", mode === "processing");
+  $("reactor-label").textContent = label;
+}
+
+/* ===== SPEECH OUTPUT ===== */
+
+function speak(text) {
+  if (!speakEnabled || !("speechSynthesis" in window)) return;
+
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-IN";
+  utterance.rate = 1;
+  utterance.pitch = 1;
+
+  window.speechSynthesis.speak(utterance);
+}
+
+/* ===== GEMINI ===== */
+
+async function askGemini(text, imageData = null) {
+  if (!API_KEY) {
+    addMessage("Please enter your Gemini API key in the script configuration.", "bot");
     return;
   }
 
-  MEMORY.forEach(item => {
-    add(item.text, item.role === "user" ? "user" : "ai");
-  });
-}
+  const userParts = [];
 
-restoreChat();
+  if (text) userParts.push({ text });
 
-// ===========================================
-// GEMINI API
-// ===========================================
-
-async function callGemini(contents) {
-  if (!API_KEY) {
-    throw new Error("API key is missing. Refresh and enter your key.");
-  }
-
-  let lastError = "";
-
-  for (const model of MODELS) {
-    try {
-      const url =
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": API_KEY
-        },
-        body: JSON.stringify({
-          contents: contents,
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048
-          }
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorMessage =
-          data?.error?.message || `HTTP ${response.status}`;
-
-        lastError = `${model}: ${errorMessage}`;
-
-        // Try another model for model/access or server errors.
-        if (
-          response.status === 404 ||
-          response.status === 429 ||
-          response.status === 503 ||
-          response.status === 500
-        ) {
-          continue;
-        }
-
-        throw new Error(errorMessage);
+  if (imageData) {
+    userParts.push({
+      inlineData: {
+        mimeType: imageData.mimeType,
+        data: imageData.data
       }
-
-      const answer =
-        data?.candidates?.[0]?.content?.parts
-          ?.map(part => part.text || "")
-          .join("");
-
-      if (!answer) {
-        lastError = `${model}: Empty response`;
-        continue;
-      }
-
-      return answer;
-
-    } catch (error) {
-      lastError = error.message;
-
-      // Network failures cannot reliably be solved by
-      // changing models, so stop.
-      if (
-        error.name === "TypeError" ||
-        error.message.includes("API key") ||
-        error.message.includes("PERMISSION_DENIED")
-      ) {
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(
-    "All available model attempts failed. " + lastError
-  );
-}
-
-// ===========================================
-// CHAT HISTORY
-// ===========================================
-
-function getContents(newPrompt) {
-  const contents = [];
-
-  // Keep only recent turns for API requests.
-  const recent = MEMORY.slice(-12);
-
-  recent.forEach(item => {
-    contents.push({
-      role: item.role === "user" ? "user" : "model",
-      parts: [{ text: item.text }]
     });
-  });
+  }
 
-  contents.push({
+  history.push({
     role: "user",
-    parts: [{ text: newPrompt }]
+    parts: userParts
   });
 
-  return contents;
-}
+  const payload = {
+    systemInstruction: {
+      parts: [{
+        text: "You are JARVIS, a helpful, intelligent and concise AI assistant. Speak naturally and politely. You are a voice assistant. Keep answers easy to hear and understand."
+      }]
+    },
+    contents: history.slice(-20),
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 1000
+    }
+  };
 
-// ===========================================
-// TEXT CHAT
-// ===========================================
-
-async function askGemini(text) {
-  const question = text.trim();
-
-  if (!question) return;
-
-  msg.value = "";
-  add(question, "user");
-
-  MEMORY.push({
-    role: "user",
-    text: question
-  });
-
-  saveMemory();
-
-  const loading = add("Thinking...", "ai");
-
-  setStatus("PROCESSING", "on");
-  setCore("THINKING");
+  setMode("processing", "PROCESSING");
+  setStatus("AI PROCESSING");
 
   try {
-    const contents = getContents(question);
-    const answer = await callGemini(contents);
-
-    loading.querySelector("p").textContent = answer;
-
-    MEMORY.push({
-      role: "ai",
-      text: answer
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": API_KEY
+      },
+      body: JSON.stringify(payload)
     });
 
-    MEMORY = MEMORY.slice(-40);
-    saveMemory();
+    const data = await response.json();
 
-    setStatus("ONLINE", "on");
-    setCore("SYSTEM ONLINE");
+    if (!response.ok) {
+      const errorText = data?.error?.message || "API request failed";
+      throw new Error(errorText + " (" + response.status + ")");
+    }
 
+    const answer =
+      data?.candidates?.[0]?.content?.parts
+        ?.map(p => p.text || "")
+        .join("\n") || "I could not generate a response.";
+
+    history.push({
+      role: "model",
+      parts: [{ text: answer }]
+    });
+
+    history = history.slice(-20);
+    saveHistory();
+
+    addMessage(answer, "bot");
     speak(answer);
 
-  } catch (error) {
-    loading.querySelector("p").textContent =
-      "ERROR: " + error.message;
+    setStatus("SYSTEM READY");
+    setMode("idle", "AWAITING COMMAND");
 
-    setStatus("ERROR", "off");
-    setCore("ERROR");
+  } catch (error) {
+    history.pop();
+
+    const errorMsg = "AI Error: " + error.message;
+    addMessage(errorMsg, "bot");
+
+    setStatus("AI ERROR");
+    setMode("idle", "SYSTEM ERROR");
 
     console.error(error);
   }
-
-  chat.scrollTop = chat.scrollHeight;
 }
 
-// ===========================================
-// SEND BUTTON
-// ===========================================
+/* ===== LOCAL COMMANDS ===== */
 
-send.addEventListener("click", () => {
-  askGemini(msg.value);
-});
+function localCommand(text) {
+  const command = text.toLowerCase().trim();
 
-msg.addEventListener("keydown", event => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    askGemini(msg.value);
+  if (/^(what time|time|tell me the time)/.test(command)) {
+    const answer = "The time is " +
+      new Date().toLocaleTimeString("en-IN");
+    addMessage(answer, "bot");
+    speak(answer);
+    return true;
   }
+
+  if (/^(what date|date|today's date)/.test(command)) {
+    const answer = "Today is " +
+      new Date().toLocaleDateString("en-IN", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+    addMessage(answer, "bot");
+    speak(answer);
+    return true;
+  }
+
+  if (command.includes("battery")) {
+    const answer = $("battery").textContent === "--%"
+      ? "Battery information is unavailable."
+      : "Battery level is " + $("battery").textContent;
+    addMessage(answer, "bot");
+    speak(answer);
+    return true;
+  }
+
+  if (command.includes("weather")) {
+    window.open("https://www.google.com/search?q=weather", "_blank");
+    return true;
+  }
+
+  if (command.includes("flashlight on") || command.includes("torch on")) {
+    toggleFlashlight(true);
+    return true;
+  }
+
+  if (command.includes("flashlight off") || command.includes("torch off")) {
+    toggleFlashlight(false);
+    return true;
+  }
+
+  if (command.includes("open whatsapp")) {
+    window.open("https://wa.me/", "_blank");
+    return true;
+  }
+
+  if (command.includes("open youtube")) {
+    window.open("https://youtube.com", "_blank");
+    return true;
+  }
+
+  if (command.includes("open google")) {
+    window.open("https://google.com", "_blank");
+    return true;
+  }
+
+  if (command.includes("open maps")) {
+    window.open("https://maps.google.com", "_blank");
+    return true;
+  }
+
+  if (command.includes("open phone") || command.includes("open dialer")) {
+    window.location.href = "tel:";
+    return true;
+  }
+
+  if (command.includes("open messages") || command.includes("open sms")) {
+    window.location.href = "sms:";
+    return true;
+  }
+
+  if (command.includes("open calculator")) {
+    window.location.href = "intent://calculator/#Intent;scheme=android;end";
+    return true;
+  }
+
+  if (command.includes("open settings")) {
+    window.location.href = "intent://settings/#Intent;scheme=android;end";
+    return true;
+  }
+
+  if (command.includes("stop speaking") || command.includes("stop voice")) {
+    window.speechSynthesis.cancel();
+    return true;
+  }
+
+  if (command.includes("mute voice")) {
+    speakEnabled = false;
+    addMessage("Voice output muted.", "bot");
+    return true;
+  }
+
+  if (command.includes("enable voice") || command.includes("unmute voice")) {
+    speakEnabled = true;
+    addMessage("Voice output enabled.", "bot");
+    speak("Voice output enabled.");
+    return true;
+  }
+
+  return false;
+}
+
+/* ===== SEND MESSAGE ===== */
+
+async function sendMessage(textOverride = null) {
+  const text = (textOverride ?? $("msg").value).trim();
+
+  if (!text && !selectedImage) return;
+
+  $("msg").value = "";
+
+  const image = selectedImage;
+  selectedImage = null;
+
+  $("image-preview").style.display = "none";
+
+  addMessage(text || "Describe this image.", "user");
+
+  if (localCommand(text)) return;
+
+  setStatus("AI PROCESSING");
+
+  await askGemini(text, image);
+}
+
+/* ===== IMAGE ===== */
+
+$("cam-btn").addEventListener("click", () => {
+  $("img-input").click();
 });
 
-// ===========================================
-// CLEAR MEMORY
-// ===========================================
-
-clearBtn.addEventListener("click", () => {
-  if (!confirm("Clear all saved chat memory?")) return;
-
-  MEMORY = [];
-  localStorage.removeItem(MEMORY_STORAGE);
-
-  chat.innerHTML = "";
-  add("Memory cleared. I am ready for a new conversation.", "ai");
-
-  setStatus("READY", "on");
-  setCore("SYSTEM ONLINE");
-});
-
-// ===========================================
-// IMAGE UPLOAD / CAMERA
-// ===========================================
-
-camBtn.addEventListener("click", () => {
-  imgInput.click();
-});
-
-imgInput.addEventListener("change", async () => {
-  const file = imgInput.files[0];
-
+$("img-input").addEventListener("change", async event => {
+  const file = event.target.files?.[0];
   if (!file) return;
 
   if (!file.type.startsWith("image/")) {
-    add("Please select a valid image.", "ai");
-    imgInput.value = "";
+    addMessage("Please select an image.", "bot");
     return;
   }
 
   if (file.size > 10 * 1024 * 1024) {
-    add("Image is too large. Maximum size is 10 MB.", "ai");
-    imgInput.value = "";
+    addMessage("Image is too large. Please select an image under 10 MB.", "bot");
     return;
   }
-
-  const question = prompt(
-    "What should I analyze in this image?",
-    "Describe this image."
-  );
-
-  if (!question) {
-    imgInput.value = "";
-    return;
-  }
-
-  add(question, "user");
-
-  const loading = add("Analyzing image...", "ai");
-
-  setStatus("VISION PROCESSING", "on");
-  setCore("ANALYZING");
 
   try {
-    const base64 = await fileToBase64(file);
+    const data = await fileToBase64(file);
 
-    const contents = [
-      {
-        role: "user",
-        parts: [
-          { text: question },
-          {
-            inline_data: {
-              mime_type: file.type,
-              data: base64
-            }
-          }
-        ]
-      }
-    ];
+    selectedImage = {
+      mimeType: file.type,
+      data
+    };
 
-    const answer = await callGemini(contents);
-
-    loading.querySelector("p").textContent = answer;
-
-    MEMORY.push(
-      { role: "user", text: "[Image] " + question },
-      { role: "ai", text: answer }
-    );
-
-    MEMORY = MEMORY.slice(-40);
-    saveMemory();
-
-    speak(answer);
-
-    setStatus("ONLINE", "on");
-    setCore("SYSTEM ONLINE");
-
+    $("preview-img").src = URL.createObjectURL(file);
+    $("image-preview").style.display = "block";
   } catch (error) {
-    loading.querySelector("p").textContent =
-      "IMAGE ERROR: " + error.message;
-
-    setStatus("ERROR", "off");
-    setCore("ERROR");
-
-    console.error(error);
-
-  } finally {
-    imgInput.value = "";
+    addMessage("Could not load image.", "bot");
   }
+
+  event.target.value = "";
 });
 
 function fileToBase64(file) {
@@ -389,142 +370,315 @@ function fileToBase64(file) {
       resolve(result.split(",")[1]);
     };
 
-    reader.onerror = () => reject(
-      new Error("Could not read image file.")
-    );
-
+    reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
-// ===========================================
-// VOICE OUTPUT
-// ===========================================
+$("remove-image").addEventListener("click", () => {
+  selectedImage = null;
+  $("preview-img").src = "";
+  $("image-preview").style.display = "none";
+});
 
-function speak(text) {
-  if (!("speechSynthesis" in window)) return;
+/* ===== MICROPHONE ===== */
 
-  window.speechSynthesis.cancel();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-
-  utterance.lang = "en-US";
-  utterance.rate = 1;
-  utterance.pitch = 1;
-  utterance.volume = 1;
-
-  utterance.onstart = () => {
-    voiceStatus.textContent = "SPEAKING";
-    voiceStatus.className = "on";
-  };
-
-  utterance.onend = () => {
-    voiceStatus.textContent = "READY";
-  };
-
-  utterance.onerror = () => {
-    voiceStatus.textContent = "READY";
-  };
-
-  window.speechSynthesis.speak(utterance);
+function getSpeechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition;
 }
 
-// ===========================================
-// VOICE INPUT
-// ===========================================
+$("mic-btn").addEventListener("click", () => {
+  const SpeechRecognition = getSpeechRecognition();
 
-const SpeechRecognition =
-  window.SpeechRecognition ||
-  window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    addMessage("Speech recognition is not supported by this browser.", "bot");
+    return;
+  }
 
-let recognition = null;
+  const recognition = new SpeechRecognition();
+  currentRecognition = recognition;
 
-if (SpeechRecognition) {
-  recognition = new SpeechRecognition();
-
-  recognition.lang = "en-US";
+  recognition.lang = "en-IN";
   recognition.continuous = false;
   recognition.interimResults = false;
 
   recognition.onstart = () => {
-    micBtn.textContent = "🔴";
-    voiceStatus.textContent = "LISTENING";
-    voiceStatus.className = "on";
-    setCore("LISTENING");
+    $("voice-status").textContent = "VOICE ON";
+    setMode("listening", "LISTENING");
+    setStatus("LISTENING");
   };
 
   recognition.onresult = event => {
-    const transcript =
-      event.results[0][0].transcript;
-
-    msg.value = transcript;
-
-    micBtn.textContent = "🎤";
-    voiceStatus.textContent = "READY";
-
-    askGemini(transcript);
+    const text = event.results[0][0].transcript;
+    $("msg").value = text;
+    sendMessage(text);
   };
 
   recognition.onerror = event => {
-    console.error("Speech error:", event.error);
-
-    micBtn.textContent = "🎤";
-    voiceStatus.textContent = "ERROR";
-    setCore("SYSTEM ONLINE");
-
-    add("Voice recognition error: " + event.error, "ai");
+    console.error("Speech error", event.error);
+    setStatus("VOICE ERROR");
   };
 
   recognition.onend = () => {
-    micBtn.textContent = "🎤";
-
-    if (voiceStatus.textContent === "LISTENING") {
-      voiceStatus.textContent = "READY";
-    }
-
-    setCore("SYSTEM ONLINE");
+    currentRecognition = null;
+    $("voice-status").textContent = wakeEnabled ? "WAKE ON" : "VOICE OFF";
+    if (!wakeEnabled) setMode("idle", "AWAITING COMMAND");
   };
-
-} else {
-  micBtn.disabled = true;
-  micBtn.title = "Speech recognition not supported";
-  voiceStatus.textContent = "UNAVAILABLE";
-  voiceStatus.className = "off";
-}
-
-micBtn.addEventListener("click", () => {
-  if (!recognition) {
-    add("Voice recognition is not supported in this browser.", "ai");
-    return;
-  }
 
   try {
     recognition.start();
   } catch (error) {
-    console.log(error);
+    addMessage("Microphone could not start.", "bot");
   }
 });
 
-// ===========================================
-// API KEY CHANGE
-// ===========================================
+/* ===== WAKE WORD ===== */
 
-function changeAPIKey() {
-  const newKey = prompt("Enter a new Gemini API key:");
+function startWake() {
+  const SpeechRecognition = getSpeechRecognition();
 
-  if (newKey && newKey.trim()) {
-    API_KEY = newKey.trim();
-    localStorage.setItem(API_KEY_STORAGE, API_KEY);
+  if (!SpeechRecognition) {
+    addMessage("Wake-word recognition is not supported in this browser.", "bot");
+    return;
+  }
 
-    add("API key updated.", "ai");
+  if (wakeEnabled) return;
+
+  wakeEnabled = true;
+  wakeRestart = true;
+
+  wakeRecognition = new SpeechRecognition();
+  wakeRecognition.lang = "en-IN";
+  wakeRecognition.continuous = true;
+  wakeRecognition.interimResults = true;
+
+  wakeRecognition.onstart = () => {
+    $("voice-status").textContent = "WAKE ON";
+    setMode("listening", "SAY HEY JARVIS");
+  };
+
+  wakeRecognition.onresult = event => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript.toLowerCase();
+
+      if (
+        transcript.includes("hey jarvis") ||
+        transcript.includes("hi jarvis") ||
+        transcript.includes("jarvis")
+      ) {
+        wakeRecognition.stop();
+
+        const cleanText = transcript
+          .replace("hey jarvis", "")
+          .replace("hi jarvis", "")
+          .replace("jarvis", "")
+          .trim();
+
+        if (cleanText) {
+          sendMessage(cleanText);
+        } else {
+          $("mic-btn").click();
+        }
+
+        break;
+      }
+    }
+  };
+
+  wakeRecognition.onerror = event => {
+    console.warn("Wake recognition error:", event.error);
+  };
+
+  wakeRecognition.onend = () => {
+    if (wakeEnabled && wakeRestart) {
+      try {
+        wakeRecognition.start();
+      } catch {}
+    } else {
+      $("voice-status").textContent = "VOICE OFF";
+      setMode("idle", "AWAITING COMMAND");
+    }
+  };
+
+  try {
+    wakeRecognition.start();
+  } catch {
+    wakeEnabled = false;
+    wakeRestart = false;
   }
 }
 
-// ===========================================
-// STARTUP
-// ===========================================
+function stopWake() {
+  wakeEnabled = false;
+  wakeRestart = false;
 
-setStatus("READY", "on");
-setCore("SYSTEM ONLINE");
+  if (wakeRecognition) {
+    try {
+      wakeRecognition.stop();
+    } catch {}
+  }
 
-console.log("J.A.R.V.I.S system initialized.");
+  $("voice-status").textContent = "VOICE OFF";
+  setMode("idle", "AWAITING COMMAND");
+}
+
+$("wake-btn").addEventListener("click", () => {
+  if (wakeEnabled) {
+    stopWake();
+    addMessage("Wake-word mode disabled.", "bot");
+  } else {
+    startWake();
+    addMessage("Wake-word mode requested. Say Hey Jarvis.", "bot");
+  }
+});
+
+/* ===== FLASHLIGHT ===== */
+
+async function toggleFlashlight(forceState = null) {
+  try {
+    if (forceState === false && torchOn) {
+      const track = flashlightStream?.getVideoTracks()[0];
+      if (track) {
+        await track.applyConstraints({
+          advanced: [{ torch: false }]
+        });
+      }
+      torchOn = false;
+      $("flash-status").textContent = "OFF";
+      return;
+    }
+
+    if (forceState === true && torchOn) return;
+
+    if (!flashlightStream) {
+      flashlightStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment"
+        }
+      });
+    }
+
+    const track = flashlightStream.getVideoTracks()[0];
+
+    await track.applyConstraints({
+      advanced: [{ torch: !torchOn }]
+    });
+
+    torchOn = !torchOn;
+    $("flash-status").textContent = torchOn ? "ON" : "OFF";
+
+  } catch (error) {
+    addMessage("Flashlight is not supported or camera permission was denied.", "bot");
+    console.warn(error);
+  }
+}
+
+$("flash-btn").addEventListener("click", () => {
+  toggleFlashlight();
+});
+
+/* ===== QUICK BUTTONS ===== */
+
+$("google-btn").addEventListener("click", () => {
+  window.open("https://google.com", "_blank");
+});
+
+$("youtube-btn").addEventListener("click", () => {
+  window.open("https://youtube.com", "_blank");
+});
+
+$("maps-btn").addEventListener("click", () => {
+  window.open("https://maps.google.com", "_blank");
+});
+
+$("weather-btn").addEventListener("click", () => {
+  window.open("https://www.google.com/search?q=weather", "_blank");
+});
+
+/* ===== BATTERY ===== */
+
+async function batteryInfo() {
+  try {
+    if (!navigator.getBattery) return;
+
+    const battery = await navigator.getBattery();
+
+    function update() {
+      $("battery").textContent = Math.round(battery.level * 100) + "%";
+      $("battery-status").textContent = battery.charging
+        ? "CHARGING"
+        : "DISCHARGING";
+    }
+
+    update();
+    battery.addEventListener("levelchange", update);
+    battery.addEventListener("chargingchange", update);
+  } catch {}
+}
+
+batteryInfo();
+
+/* ===== CLOCK ===== */
+
+function updateClock() {
+  $("clock").textContent = new Date().toLocaleTimeString("en-IN");
+}
+
+setInterval(updateClock, 1000);
+updateClock();
+
+/* ===== FULLSCREEN ===== */
+
+function jarvisFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  } else {
+    document.exitFullscreen?.().catch(() => {});
+  }
+}
+
+$("fullscreen").addEventListener("click", jarvisFullscreen);
+$("fullscreen-bottom").addEventListener("click", jarvisFullscreen);
+
+/* ===== TEXT INPUT ===== */
+
+$("send").addEventListener("click", () => sendMessage());
+
+$("msg").addEventListener("keydown", event => {
+  if (event.key === "Enter") sendMessage();
+});
+
+$("speak-btn").addEventListener("click", () => {
+  speakEnabled = true;
+
+  const lastBot = [...$("chat").querySelectorAll(".bot")]
+    .pop();
+
+  if (lastBot) {
+    const text = lastBot.querySelector("div")?.textContent;
+    if (text) speak(text);
+  }
+});
+
+/* ===== CLEAR ===== */
+
+$("clear-btn").addEventListener("click", () => {
+  history = [];
+  localStorage.removeItem("jarvis_memory");
+  $("chat").innerHTML = "";
+  addMessage("Communication log cleared. Systems ready.", "bot");
+});
+
+/* ===== INIT ===== */
+
+restoreChat();
+setStatus(API_KEY ? "SYSTEM READY" : "API KEY MISSING");
+
+/* ===== SERVICE WORKER ===== */
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js")
+      .catch(error => console.warn("Service worker:", error));
+  });
+}
